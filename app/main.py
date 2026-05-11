@@ -1,12 +1,16 @@
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 
 from app.routers import upload
 
-_PUBLIC = Path(__file__).parent.parent / "public"
+_INDEX_HTML = (Path(__file__).parent.parent / "public" / "index.html").read_text(encoding="utf-8")
 
 app = FastAPI(title="ますびと商店 出荷データ作成")
 app.include_router(upload.router)
-app.mount("/", StaticFiles(directory=str(_PUBLIC), html=True), name="static")
+
+
+@app.get("/")
+async def root():
+    return HTMLResponse(_INDEX_HTML)
