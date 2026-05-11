@@ -5,17 +5,30 @@
 ```
 POST /api/upload
   - multipart/form-data で CSV ファイル受け取り
-  - バックグラウンドで処理開始、即座に { job_id: "xxx" } を返す
+  - レスポンスは text/event-stream（SSE）
+  - 処理を同期的に実行しながら進捗イベントを流す
+  - 最後の done イベントに base64 エンコードした ZIP を含める
+  - エラー時は error イベントを返してストリームを閉じる
+```
 
-GET /api/progress/{job_id}
-  - Server-Sent Events (text/event-stream)
-  - data: {"step": "kouchi", "pct": 25, "message": "高知注文データ作成中..."}
-  - 完了: data: {"step": "done", "pct": 100, "download_url": "/api/download/{job_id}"}
-  - エラー: data: {"step": "error", "message": "エラー内容"}
+旧来の `GET /api/progress/{job_id}` と `GET /api/download/{job_id}` は廃止。
+ジョブIDによる状態管理は不要（1リクエスト＝1処理）。
 
-GET /api/download/{job_id}
-  - 全ZIPを1つのZIPにまとめてダウンロード
-  - Content-Disposition: attachment; filename*=UTF-8''yyyyMMdd_HHmm_出荷データ.zip
+## SSE イベント形式
+
+進捗イベント（processing中）:
+```
+data: {"step": "kouchi", "pct": 25, "message": "高知注文データ作成中..."}
+```
+
+完了イベント（最終）:
+```
+data: {"step": "done", "pct": 100, "message": "完了", "filename": "260511_1430_出荷データ.zip", "data": "<base64文字列>"}
+```
+
+エラーイベント:
+```
+data: {"step": "error", "pct": 0, "message": "エラー内容"}
 ```
 
 ## プログレス ステップ
@@ -30,18 +43,47 @@ GET /api/download/{job_id}
 | `total_pick` | 75 | トータルピック表作成中... |
 | `picking_list` | 90 | ピッキングリスト作成中... |
 | `zipping` | 97 | ZIPにまとめています... |
-| `done` | 100 | 完了 |
+| `done` | 100 | 完了（`data` フィールドに base64 ZIP を含む） |
 
-## フロントエンド UI
+## フロントエンド フロー
+
+1. ユーザーがCSVを選択／ドロップ
+2. `fetch POST /api/upload` を `ReadableStream` で受け取る
+3. SSEイベントをパースしてプログレスバーを更新
+4. `step === "done"` を受信したら:
+   - `atob(event.data)` → `Uint8Array` → `Blob(type="application/zip")`
+   - `URL.createObjectURL(blob)` → `<a>` を生成して `.click()` でダウンロード起動
+5. `step === "error"` を受信したら赤いアラート表示
+
+## フロントエンド UI 要件
 
 - Tailwind CSS CDN（ビルド不要）
 - 日本語UI、シンプルデザイン
 - ファイルドラッグ&ドロップ対応
 - SSEでプログレスバーをリアルタイム更新
-- 完了後にダウンロードボタン表示
+- 完了後にブラウザが自動ダウンロードを起動（ボタン不要）
 - エラー時は赤いアラート表示
 
-## サーバー起動手順（トラブル回避）
+## Vercel 設定ファイル
+
+```json
+// vercel.json
+{
+  "version": 2,
+  "builds": [{ "src": "api/index.py", "use": "@vercel/python" }],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "api/index.py" },
+    { "src": "/(.*)", "dest": "/public/$1" }
+  ]
+}
+```
+
+```python
+# api/index.py
+from app.main import app
+```
+
+## ローカル起動手順（トラブル回避）
 
 ```powershell
 # 1. 既存の python プロセスを全停止
