@@ -1,0 +1,239 @@
+INDEX = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ますびと商店 出荷データ作成</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+<div class="bg-white rounded-2xl shadow-lg w-full max-w-xl p-8">
+  <h1 class="text-2xl font-bold text-gray-800 mb-1">ますびと商店</h1>
+  <p class="text-gray-500 text-sm mb-8">出荷データ作成ツール</p>
+
+  <!-- Drop zone -->
+  <div id="dropzone"
+       class="border-2 border-dashed border-blue-300 rounded-xl p-10 text-center cursor-pointer
+              hover:border-blue-500 hover:bg-blue-50 transition-colors"
+       onclick="document.getElementById('fileInput').click()">
+    <svg class="mx-auto mb-3 w-12 h-12 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+    </svg>
+    <p class="text-blue-600 font-medium">CSVファイルをドロップ</p>
+    <p class="text-gray-400 text-sm mt-1">またはクリックしてファイルを選択</p>
+    <input id="fileInput" type="file" accept=".csv" class="hidden">
+  </div>
+
+  <!-- Progress section (hidden until upload) -->
+  <div id="progressSection" class="hidden mt-6">
+    <div class="flex justify-between text-sm text-gray-600 mb-1">
+      <span id="statusMsg">処理中...</span>
+      <span id="pctLabel">0%</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+      <div id="progressBar"
+           class="bg-blue-500 h-3 rounded-full transition-all duration-300"
+           style="width:0%"></div>
+    </div>
+    <div id="stepBadges" class="flex flex-wrap gap-2 mt-3"></div>
+  </div>
+
+  <!-- Download section (shown after done, auto-download is triggered) -->
+  <div id="downloadSection" class="hidden mt-6 text-center">
+    <p class="text-green-700 font-semibold mb-3">✓ ダウンロードが開始されました</p>
+    <button onclick="doDownload()"
+            class="inline-block bg-green-600 hover:bg-green-700 text-white font-semibold
+                   px-8 py-3 rounded-xl transition-colors shadow">
+      再ダウンロード
+    </button>
+    <button onclick="reset()"
+            class="ml-4 text-sm text-gray-400 hover:text-gray-600 underline">
+      別のファイルを処理する
+    </button>
+  </div>
+
+  <!-- Error section -->
+  <div id="errorSection" class="hidden mt-6 bg-red-50 border border-red-200 rounded-xl p-4">
+    <p class="text-red-700 font-medium text-sm">エラーが発生しました</p>
+    <p id="errorMsg" class="text-red-600 text-sm mt-1"></p>
+    <button onclick="reset()"
+            class="mt-3 text-sm text-red-500 hover:text-red-700 underline">
+      やり直す
+    </button>
+  </div>
+</div>
+
+<script>
+const STEPS = {
+  parsing:        "CSV読み込み",
+  kouchi:         "高知",
+  sakai_main:     "堺メイン",
+  sakai_cooler:   "堺クーラー",
+  sakai_yupacket: "堺ゆうパケット",
+  total_pick:     "ピック表",
+  picking_list:   "ピッキングリスト",
+  zipping:        "ZIP",
+  done:           "完了",
+};
+
+const dropzone    = document.getElementById("dropzone");
+const fileInput   = document.getElementById("fileInput");
+const progressSec = document.getElementById("progressSection");
+const downloadSec = document.getElementById("downloadSection");
+const errorSec    = document.getElementById("errorSection");
+const progressBar = document.getElementById("progressBar");
+const statusMsg   = document.getElementById("statusMsg");
+const pctLabel    = document.getElementById("pctLabel");
+const stepBadges  = document.getElementById("stepBadges");
+const errorMsg    = document.getElementById("errorMsg");
+
+let lastBlobUrl  = null;
+let lastFilename = null;
+
+dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("border-blue-500","bg-blue-50"); });
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("border-blue-500","bg-blue-50"));
+dropzone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropzone.classList.remove("border-blue-500","bg-blue-50");
+  const file = e.dataTransfer.files[0];
+  if (file) startUpload(file);
+});
+fileInput.addEventListener("change", () => {
+  if (fileInput.files[0]) startUpload(fileInput.files[0]);
+});
+
+async function startUpload(file) {
+  if (!file.name.toLowerCase().endsWith(".csv")) {
+    showError("CSVファイルを選択してください");
+    return;
+  }
+
+  showProgress();
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  let res;
+  try {
+    res = await fetch("/api/upload", { method: "POST", body: fd });
+  } catch (e) {
+    showError("アップロードに失敗しました: " + e.message);
+    return;
+  }
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => res.statusText);
+    showError("アップロードエラー: " + txt);
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\\n");
+      buffer = parts.pop();
+      for (const line of parts) {
+        if (line.startsWith("data: ")) {
+          try { handleEvent(JSON.parse(line.slice(6))); } catch (_) {}
+        }
+      }
+    }
+  } catch (e) {
+    showError("ストリーム読み取りエラー: " + e.message);
+  }
+}
+
+function handleEvent(data) {
+  updateProgress(data);
+  if (data.step === "done") {
+    triggerDownload(data.data, data.filename);
+    downloadSec.classList.remove("hidden");
+  }
+  if (data.step === "error") {
+    showError(data.message || "不明なエラー");
+  }
+}
+
+function triggerDownload(b64, filename) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: "application/zip" });
+  if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+  lastBlobUrl = URL.createObjectURL(blob);
+  lastFilename = filename;
+  doDownload();
+}
+
+function doDownload() {
+  if (!lastBlobUrl) return;
+  const a = document.createElement("a");
+  a.href = lastBlobUrl;
+  a.download = lastFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function updateProgress(data) {
+  const pct = data.pct || 0;
+  progressBar.style.width = pct + "%";
+  pctLabel.textContent = pct + "%";
+  statusMsg.textContent = data.message || "";
+
+  const label = STEPS[data.step];
+  if (label && data.step !== "done" && data.step !== "error") {
+    addBadge(label);
+  }
+}
+
+function addBadge(label) {
+  for (const b of stepBadges.children) {
+    if (b.textContent === label) return;
+  }
+  const span = document.createElement("span");
+  span.textContent = label;
+  span.className = "text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5";
+  stepBadges.appendChild(span);
+}
+
+function showProgress() {
+  dropzone.classList.add("opacity-50","pointer-events-none");
+  progressSec.classList.remove("hidden");
+  downloadSec.classList.add("hidden");
+  errorSec.classList.add("hidden");
+  stepBadges.innerHTML = "";
+  progressBar.style.width = "0%";
+  pctLabel.textContent = "0%";
+  statusMsg.textContent = "準備中...";
+}
+
+function showError(msg) {
+  dropzone.classList.remove("opacity-50","pointer-events-none");
+  errorMsg.textContent = msg;
+  errorSec.classList.remove("hidden");
+  progressSec.classList.add("hidden");
+}
+
+function reset() {
+  if (lastBlobUrl) { URL.revokeObjectURL(lastBlobUrl); lastBlobUrl = null; lastFilename = null; }
+  dropzone.classList.remove("opacity-50","pointer-events-none");
+  progressSec.classList.add("hidden");
+  downloadSec.classList.add("hidden");
+  errorSec.classList.add("hidden");
+  fileInput.value = "";
+  stepBadges.innerHTML = "";
+}
+</script>
+</body>
+</html>
+"""
