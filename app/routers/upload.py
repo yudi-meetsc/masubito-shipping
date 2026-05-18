@@ -1,7 +1,9 @@
 import asyncio
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+JST = timezone(timedelta(hours=9))
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
@@ -25,8 +27,9 @@ async def upload(file: UploadFile = File(...)):
 
     async def generate():
         try:
-            ts = datetime.now().strftime("%y%m%d_%H%M")
-            date_str = datetime.now().strftime("%Y年%m月%d日")
+            now_jst = datetime.now(JST)
+            ts = now_jst.strftime("%y%m%d_%H%M")
+            date_str = now_jst.strftime("%Y年%m月%d日")
 
             yield _evt("parsing", 10, "CSVを読み込み中...")
             rows = await asyncio.to_thread(csv_parser.parse, content)
