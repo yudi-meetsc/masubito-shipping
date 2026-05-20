@@ -103,27 +103,23 @@ def _draw_page(
     # Underline B2:AG2
     cv.line(bx, _row_bottom(2), _RIGHT_EDGE, _row_bottom(2))
 
-    # Rows 4-8: お届け先名ブロック (border box)
-    box4_y = _row_bottom(8)
-    box4_h = _row_bottom(3) - _row_bottom(8)
-    cv.rect(bx, box4_y, _CONTENT_W, box4_h)
+    # お届け先名ブロック (rows 3-6, border box)
+    cv.rect(bx, _row_bottom(6), _CONTENT_W, _row_bottom(2) - _row_bottom(6))
     cv.setFont(FONT, 9)
-    cv.drawString(_col_x(2) + 2, _text_y(4), "お届け先名")
+    cv.drawString(_col_x(2) + 2, _text_y(3), "お届け先名")
     cv.setFont(FONT, 14)
-    cv.drawString(_col_x(3), _text_y(6), f"{name} 様")
+    cv.drawString(_col_x(3), _text_y(5), f"{name} 様")
 
-    # Rows 10-15: お届け先情報ブロック (border box)
-    box10_y = _row_bottom(15)
-    box10_h = _row_bottom(9) - _row_bottom(15)
-    cv.rect(bx, box10_y, _CONTENT_W, box10_h)
+    # お届け先情報ブロック (rows 8-12, border box)
+    cv.rect(bx, _row_bottom(12), _CONTENT_W, _row_bottom(7) - _row_bottom(12))
     cv.setFont(FONT, 9)
-    cv.drawString(_col_x(2) + 2, _text_y(10), "お届け先情報")
+    cv.drawString(_col_x(2) + 2, _text_y(8), "お届け先情報")
     cv.setFont(FONT, 10)
-    cv.drawString(_col_x(3), _text_y(12), str(postal))
-    cv.drawString(_col_x(3), _text_y(14), str(tel))
+    cv.drawString(_col_x(3), _text_y(10), str(postal))
+    cv.drawString(_col_x(3), _text_y(11), str(tel))
 
-    # Column header bar (moved up: row 17)
-    HEADER_ROW = 17
+    # Column header bar
+    HEADER_ROW = 14
     cv.setFillColor(_HEADER_FILL)
     cv.rect(bx, _row_bottom(HEADER_ROW), _CONTENT_W, ROW_H, fill=1, stroke=1)
     cv.setFillColor(black)
