@@ -122,18 +122,20 @@ def _draw_page(
     cv.drawString(_col_x(3), _text_y(12), str(postal))
     cv.drawString(_col_x(3), _text_y(14), str(tel))
 
-    # Row 19: column header bar
+    # Column header bar (moved up: row 17)
+    HEADER_ROW = 17
     cv.setFillColor(_HEADER_FILL)
-    cv.rect(bx, _row_bottom(19), _CONTENT_W, ROW_H, fill=1, stroke=1)
+    cv.rect(bx, _row_bottom(HEADER_ROW), _CONTENT_W, ROW_H, fill=1, stroke=1)
     cv.setFillColor(black)
     cv.setFont(FONT, 9)
-    cv.drawString(_col_x(2) + 2, _text_y(19), "商品名")
-    cv.drawString(_col_x(30), _text_y(19), "数量")  # AD = col30
+    cv.drawString(_col_x(2) + 2, _text_y(HEADER_ROW), "商品名")
+    cv.drawString(_col_x(30), _text_y(HEADER_ROW), "数量")  # AD = col30
 
-    # Rows 20+: product rows (no aggregation — each CSV row = one line)
+    # Product rows (no aggregation — each CSV row = one line)
+    product_start = HEADER_ROW + 1
     total_qty = 0
     for i, (prod_name, qty) in enumerate(products):
-        rn = 20 + i
+        rn = product_start + i
         bg = _WHITE_FILL if i % 2 == 0 else _GREY_FILL
         cv.setFillColor(bg)
         cv.rect(bx, _row_bottom(rn), _CONTENT_W, ROW_H, fill=1, stroke=1)
@@ -145,7 +147,7 @@ def _draw_page(
 
     # Total row with one gap row (matches GAS: totalRow = endRow + 2)
     if products:
-        tr = 20 + len(products) + 1
+        tr = product_start + len(products) + 1
         cv.setFont(FONT, 9)
         cv.setFillColor(black)
         cv.rect(bx, _row_bottom(tr), _CONTENT_W, ROW_H, fill=0, stroke=1)
