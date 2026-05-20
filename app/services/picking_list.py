@@ -120,7 +120,7 @@ def _draw_page(
     cv.drawString(_col_x(2) + 2, _text_y(10), "お届け先情報")
     cv.setFont(FONT, 10)
     cv.drawString(_col_x(3), _text_y(12), str(postal))
-    cv.drawString(_col_x(3), _text_y(16), str(tel))
+    cv.drawString(_col_x(3), _text_y(14), str(tel))
 
     # Row 19: column header bar
     cv.setFillColor(_HEADER_FILL)
