@@ -112,9 +112,9 @@ def _draw_page(
     cv.setFont(FONT, 14)
     cv.drawString(_col_x(3), _text_y(6), f"{name} 様")
 
-    # Rows 10-17: お届け先情報ブロック (border box)
-    box10_y = _row_bottom(17)
-    box10_h = _row_bottom(9) - _row_bottom(17)
+    # Rows 10-15: お届け先情報ブロック (border box)
+    box10_y = _row_bottom(15)
+    box10_h = _row_bottom(9) - _row_bottom(15)
     cv.rect(bx, box10_y, _CONTENT_W, box10_h)
     cv.setFont(FONT, 9)
     cv.drawString(_col_x(2) + 2, _text_y(10), "お届け先情報")
