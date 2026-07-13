@@ -5,12 +5,40 @@ from typing import List, Dict, Any
 import chardet
 
 
-def _detect_encoding(raw: bytes) -> str:
-    result = chardet.detect(raw)
-    enc = (result.get("encoding") or "shift_jis").lower()
-    if "utf" in enc:
-        return "utf-8-sig"
-    return "shift_jis"
+# 日本語CSVで実際に来る文字コード候補。順番に意味がある:
+#   - utf-8-sig を最初に（UTF-8は自己検証性が高く、BOM有無どちらも扱える）
+#   - shift_jis ではなく cp932 を使う。cp932 は shift_jis の上位互換で、
+#     髙(髙橋)・﨑(山﨑)・①・㈱・℡・Ⅲ などのNEC/IBM拡張文字を含む。
+#     これらは実在する顧客名・住所に頻出するが shift_jis では復号できず「�」になる。
+_CANDIDATE_ENCODINGS = ("utf-8-sig", "cp932", "euc_jp", "iso-2022-jp")
+
+# ヘッダーがこの列を含んでいれば、その文字コードで正しく復号できたと判断する。
+# （EUC-JPのバイト列は cp932 でも「復号成功」してしまうため、
+#   例外の有無だけでは判定できない。列名が読めるかどうかで見分ける。）
+_REQUIRED_COLUMNS = ("管理番号", "棚番")
+
+
+def _header_columns(text: str) -> List[str]:
+    first_line = text.split("\n", 1)[0]
+    return next(csv.reader(io.StringIO(first_line)), [])
+
+
+def _decode(raw: bytes) -> str:
+    """必要な列名がヘッダーに現れる文字コードを採用して復号する。"""
+    for enc in _CANDIDATE_ENCODINGS:
+        try:
+            text = raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+        if all(c in _header_columns(text) for c in _REQUIRED_COLUMNS):
+            return text
+
+    detected = (chardet.detect(raw).get("encoding") or "?").lower()
+    raise ValueError(
+        f"CSVの文字コードを判別できませんでした（推定: {detected}）。"
+        f"列名 {'・'.join(_REQUIRED_COLUMNS)} が読み取れません。"
+        "Shift_JIS(CP932) または UTF-8 で保存し直してください。"
+    )
 
 
 def _normalize_phone(phone: str) -> str:
@@ -37,11 +65,7 @@ def _pick_product_key(row: Dict[str, Any]) -> str:
 
 
 def parse(content: bytes) -> List[Dict[str, Any]]:
-    enc = _detect_encoding(content)
-    try:
-        text = content.decode(enc, errors="replace")
-    except Exception:
-        text = content.decode("utf-8", errors="replace")
+    text = _decode(content)
 
     reader = csv.DictReader(io.StringIO(text))
     rows = list(reader)

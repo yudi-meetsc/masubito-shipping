@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
-from app.utils.excel_helpers import set_str
+from app.utils.excel_helpers import normalize_dash, set_str
 
 _FILLS = {
     "main": PatternFill("solid", fgColor="1F4E79"),
@@ -54,11 +54,11 @@ YUPACKET_HEADERS = [
 
 def _prep(row: Dict[str, Any]):
     """Return (addr1, addr2, addr3, name1, name2, tel, postal)."""
-    addr_all = (
+    addr_all = normalize_dash(
         str(row.get("届け先都道府県", ""))
         + str(row.get("届け先住所１", ""))
         + str(row.get("届け先住所２", ""))
-    ).replace("−", "-")
+    )
     addr1 = addr_all[:16]
     addr2 = addr_all[16:32]
     addr3 = addr_all[32:48]
@@ -67,8 +67,8 @@ def _prep(row: Dict[str, Any]):
     name1 = name[:16]
     name2 = name[16:] if len(name) > 16 else ""
 
-    tel = str(row.get("届け先ＴＥＬ", "")).replace("−", "-")
-    postal = str(row.get("届け先郵便番号", "")).replace("−", "-")
+    tel = normalize_dash(str(row.get("届け先ＴＥＬ", "")))
+    postal = normalize_dash(str(row.get("届け先郵便番号", "")))
     return addr1, addr2, addr3, name1, name2, tel, postal
 
 

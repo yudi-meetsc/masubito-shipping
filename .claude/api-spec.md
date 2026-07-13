@@ -64,22 +64,36 @@ data: {"step": "error", "pct": 0, "message": "エラー内容"}
 - 完了後にブラウザが自動ダウンロードを起動（ボタン不要）
 - エラー時は赤いアラート表示
 
+HTMLは `app/_html.py` の `INDEX` 文字列。静的ファイルとしては配信していない
+（`GET /` が FastAPI から `HTMLResponse` で返す）。UIを直す時はこのファイルを編集する。
+
 ## Vercel 設定ファイル
+
+全リクエスト（`/` も含む）を Python 関数に流す。静的配信はしない。
 
 ```json
 // vercel.json
 {
   "version": 2,
-  "builds": [{ "src": "api/index.py", "use": "@vercel/python" }],
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": { "maxLambdaSize": "50mb" }
+    }
+  ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "api/index.py" },
-    { "src": "/(.*)", "dest": "/public/$1" }
+    { "src": "/(.*)", "dest": "api/index.py" }
   ]
 }
 ```
 
 ```python
 # api/index.py
+# app パッケージを import できるようリポジトリルートを sys.path に追加してから読み込む
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app.main import app
 ```
 
