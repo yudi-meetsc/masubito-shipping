@@ -3,16 +3,25 @@
 ## エンドポイント
 
 ```
-POST /api/upload
+POST /api/upload/shukka
   - multipart/form-data で CSV ファイル受け取り
   - レスポンスは text/event-stream（SSE）
   - 処理を同期的に実行しながら進捗イベントを流す
   - 最後の done イベントに base64 エンコードした ZIP を含める
   - エラー時は error イベントを返してストリームを閉じる
+
+POST /api/upload/hasso
+  - multipart/form-data で最大3つのCSVを受け取る（すべて任意・最低1つ必須）
+      nouhin : 納品データ_YYYYMMDD_HHMM.csv
+      sagawa : shukka_rireki_YYYYMMDD*.csv（出荷履歴・佐川）
+      hikkyu : 飛脚ゆうパケット便ラベル発行システム_取込明細_*.csv
+  - 0件なら 400。レスポンスは出荷と同じ SSE
+  - done イベントに filename / data(base64 ZIP) に加えて results（ファイル名と件数）を含む
 ```
 
 旧来の `GET /api/progress/{job_id}` と `GET /api/download/{job_id}` は廃止。
 ジョブIDによる状態管理は不要（1リクエスト＝1処理）。
+`POST /api/upload` は `/api/upload/shukka` にリネーム済み（発送と並べるため）。
 
 ## SSE イベント形式
 
@@ -31,7 +40,7 @@ data: {"step": "done", "pct": 100, "message": "完了", "filename": "260511_1430
 data: {"step": "error", "pct": 0, "message": "エラー内容"}
 ```
 
-## プログレス ステップ
+## プログレス ステップ（出荷）
 
 | step | pct | メッセージ |
 |---|---|---|
@@ -45,10 +54,21 @@ data: {"step": "error", "pct": 0, "message": "エラー内容"}
 | `zipping` | 97 | ZIPにまとめています... |
 | `done` | 100 | 完了（`data` フィールドに base64 ZIP を含む） |
 
+## プログレス ステップ（発送）
+
+| step | pct | メッセージ |
+|---|---|---|
+| `parsing` | 15 | CSVを読み込み中... |
+| `yamato` | 40 | ヤマト伝票データ作成中... |
+| `sagawa` | 60 | 佐川伝票データ作成中... |
+| `hikkyu` | 80 | 飛脚ゆうパケット伝票データ作成中... |
+| `zipping` | 95 | ZIPにまとめています... |
+| `done` | 100 | 完了（`data` に base64 ZIP、`results` にファイル名と件数） |
+
 ## フロントエンド フロー
 
-1. ユーザーがCSVを選択／ドロップ
-2. `fetch POST /api/upload` を `ReadableStream` で受け取る
+1. ユーザーがCSVを選択／ドロップ（発送は最大3ファイル選択後に「変換」ボタン）
+2. `fetch POST /api/upload/{shukka,hasso}` を `ReadableStream` で受け取る
 3. SSEイベントをパースしてプログレスバーを更新
 4. `step === "done"` を受信したら:
    - `atob(event.data)` → `Uint8Array` → `Blob(type="application/zip")`
@@ -59,6 +79,10 @@ data: {"step": "error", "pct": 0, "message": "エラー内容"}
 
 - Tailwind CSS CDN（ビルド不要）
 - 日本語UI、シンプルデザイン
+- **上部に「出荷 / 発送」タブ**。タブごとに入力欄を差し替え、進捗バー・ダウンロード・エラー欄は共通で使い回す
+  - モードごとの `endpoint` と進捗ステップ表は JS の `MODES` オブジェクトに定義する
+  - 発送を実装する時は `MODES.hasso` の `endpoint` / `steps` と `#panel-hasso` の中身を埋める
+  - 処理中はタブを無効化（`setBusy()`）。タブ切替時は `reset()` で共通欄をクリア
 - ファイルドラッグ&ドロップ対応
 - SSEでプログレスバーをリアルタイム更新
 - 完了後にブラウザが自動ダウンロードを起動（ボタン不要）

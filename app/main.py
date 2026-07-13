@@ -2,10 +2,11 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 from app._html import INDEX
-from app.routers import upload
+from app.routers import hasso, upload
 
-app = FastAPI(title="ますびと商店 出荷データ作成")
+app = FastAPI(title="ますびと商店 データ作成")
 app.include_router(upload.router)
+app.include_router(hasso.router)
 
 
 @app.get("/")

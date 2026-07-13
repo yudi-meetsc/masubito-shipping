@@ -1,6 +1,6 @@
 import csv
 import io
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Sequence
 
 import chardet
 
@@ -23,20 +23,20 @@ def _header_columns(text: str) -> List[str]:
     return next(csv.reader(io.StringIO(first_line)), [])
 
 
-def _decode(raw: bytes) -> str:
+def decode(raw: bytes, required_columns: Sequence[str], label: str = "CSV") -> str:
     """必要な列名がヘッダーに現れる文字コードを採用して復号する。"""
     for enc in _CANDIDATE_ENCODINGS:
         try:
             text = raw.decode(enc)
         except (UnicodeDecodeError, LookupError):
             continue
-        if all(c in _header_columns(text) for c in _REQUIRED_COLUMNS):
+        if all(c in _header_columns(text) for c in required_columns):
             return text
 
     detected = (chardet.detect(raw).get("encoding") or "?").lower()
     raise ValueError(
-        f"CSVの文字コードを判別できませんでした（推定: {detected}）。"
-        f"列名 {'・'.join(_REQUIRED_COLUMNS)} が読み取れません。"
+        f"{label}を読み取れませんでした。列名 {'・'.join(required_columns)} が見つかりません。"
+        f"ファイルの種類が違うか、対応していない文字コードです（推定: {detected}）。"
         "Shift_JIS(CP932) または UTF-8 で保存し直してください。"
     )
 
@@ -65,7 +65,7 @@ def _pick_product_key(row: Dict[str, Any]) -> str:
 
 
 def parse(content: bytes) -> List[Dict[str, Any]]:
-    text = _decode(content)
+    text = decode(content, _REQUIRED_COLUMNS, "出荷CSV")
 
     reader = csv.DictReader(io.StringIO(text))
     rows = list(reader)
