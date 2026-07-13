@@ -22,16 +22,21 @@ api/
 └── index.py              # Vercel エントリーポイント（app をインポートするだけ）
 app/
 ├── main.py               # FastAPI app & router登録、GET / で INDEX を返す
-├── _html.py              # Tailwind UI を Python 文字列 INDEX として埋め込み
-├── routers/upload.py     # POST /api/upload（SSEストリーミング＋base64 ZIP返却）
+├── _html.py              # Tailwind UI を Python 文字列 INDEX として埋め込み（出荷/発送タブ）
+├── routers/
+│   ├── upload.py         # POST /api/upload/shukka（出荷。SSE＋base64 ZIP返却）
+│   └── hasso.py          # POST /api/upload/hasso（発送。CSV最大3つ→SSE＋base64 ZIP）
 ├── services/
-│   ├── csv_parser.py     # CSV読み込み・文字コード判定・棚番分類
+│   ├── csv_parser.py     # CSV読み込み・文字コード判定・棚番分類（decode() は発送でも共用）
 │   ├── kouchi_order.py   # 高知注文データ Excel生成
 │   ├── sakai_order.py    # 堺メイン/クーラー/ゆうパケット Excel生成
 │   ├── total_pick.py     # トータルピック表 Excel生成
 │   ├── picking_list.py   # ピッキングリスト PDF生成
-│   └── zip_builder.py    # 全ZIPをひとつに束ねる
-└── utils/excel_helpers.py
+│   ├── hasso.py          # 発送データ（ヤマト/佐川/飛脚 注文伝票csv連携）生成
+│   └── zip_builder.py    # 名前→bytes をひとつのZIPに束ねる（出荷/発送で共用）
+└── utils/
+    ├── excel_helpers.py
+    └── sse.py            # SSE イベント整形（両ルーターで共用）
 vercel.json               # Vercel ルーティング設定
 ```
 
@@ -74,7 +79,12 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
   「−」に見える文字は U+2212 / U+FF0D / U+2010 など複数あり、1つだけ `.replace()` しても変換漏れする。
   長音符「ー」(U+30FC) は「クーラー」等に出るため変換対象外。
 - **サーバーレス設計**: DB不使用、ジョブ状態なし、ファイル書き出しなし
-- `POST /api/upload` が SSE でリアルタイム進捗を流しながら同期処理し、最後の `done` イベントに base64 エンコードした ZIP を埋め込む
+- `POST /api/upload/shukka` が SSE でリアルタイム進捗を流しながら同期処理し、最後の `done` イベントに base64 エンコードした ZIP を埋め込む
+- UI は「出荷 / 発送」タブ制。モードごとの endpoint と進捗ステップは JS の `MODES` に定義。
+  出荷はファイル選択で即実行、発送は最大3ファイル選択後に「変換」ボタンで実行。
+  SSE・ダウンロード・エラー表示のコードは両モード共通（`startJob(FormData)`）
+- **発送は GAS (`convertAndSave`) の挙動をそのまま再現する**。重複排除や空ファイル抑止を
+  「改善」として勝手に入れないこと（詳細は business-logic.md）
 - フロントエンドは `done` イベントの base64 から `Blob` を生成してブラウザダウンロードを起動する
 - openpyxlで「文字列強制」は `cell.number_format = '@'` + 値を `str()` でセット（`'` プレフィックス不要）
 - 列アクセスは必ず `row.get("列名", "")` を使う（列が存在しない場合でも KeyError にならないように）

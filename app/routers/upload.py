@@ -1,25 +1,27 @@
 import asyncio
 import base64
-import json
 from datetime import datetime, timezone, timedelta
-
-JST = timezone(timedelta(hours=9))
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.services import csv_parser, kouchi_order, sakai_order, total_pick, picking_list, zip_builder
+from app.services import (
+    csv_parser,
+    kouchi_order,
+    sakai_order,
+    total_pick,
+    picking_list,
+    zip_builder,
+)
+from app.utils.sse import event as _evt
+
+JST = timezone(timedelta(hours=9))
 
 router = APIRouter()
 
 
-def _evt(step: str, pct: int, message: str, **extra) -> str:
-    payload = {"step": step, "pct": pct, "message": message, **extra}
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
-@router.post("/api/upload")
-async def upload(file: UploadFile = File(...)):
+@router.post("/api/upload/shukka")
+async def upload_shukka(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(400, "CSVファイルをアップロードしてください")
 
@@ -49,7 +51,9 @@ async def upload(file: UploadFile = File(...)):
                 )
 
             yield _evt("sakai_main", 40, "堺メイン注文データ作成中...")
-            sakai_zips = await asyncio.to_thread(sakai_order.build, sakai_24, sakai_3, ts)
+            sakai_zips = await asyncio.to_thread(
+                sakai_order.build, sakai_24, sakai_3, ts
+            )
             if "main" in sakai_zips:
                 sub_zips[f"{ts}_注文データ_堺メイン.zip"] = sakai_zips["main"]
 
